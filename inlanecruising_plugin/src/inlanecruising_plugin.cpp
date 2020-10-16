@@ -99,13 +99,13 @@ namespace inlanecruising_plugin
         ROS_WARN_STREAM("5");
 
         size_t index = 0;
-        ROS_WARN_STREAM("6");
+        ROS_INFO_STREAM("6");
         for (auto wp : waypoints_list) {
-            ROS_WARN_STREAM("7");
+            ROS_INFO_STREAM("7");
             Boost2DPoint p(wp.pose.pose.position.x, wp.pose.pose.position.y);
-            ROS_WARN_STREAM("8");
+            //ROS_INFO_STREAM("8");
             rtree.insert(std::make_pair(p, index));
-            ROS_WARN_STREAM("9");
+            //ROS_INFO_STREAM("9");
             index++;
         }
         return rtree; // TODO make return meaningful
@@ -254,10 +254,13 @@ namespace inlanecruising_plugin
 
     tf2::Transform compute_heading_frame(const tf2::Vector3& p1, const tf2::Vector3& p2) {
         tf2::Matrix3x3 rot_mat = tf2::Matrix3x3::getIdentity();
-
+        ROS_ERROR("96");
         double yaw = atan2(p2.y() - p1.y(), p2.x() - p1.x());
+        ROS_ERROR("95");
 
         rot_mat.setRPY(0, 0, yaw);
+        ROS_ERROR("94");
+
         tf2::Vector3 position(p1.x(), p1.y(), 0);
         tf2::Transform frame(rot_mat, position);
         return frame;
@@ -285,21 +288,27 @@ namespace inlanecruising_plugin
         if (basic_points.size() < 2) {
             throw std::invalid_argument("Not enough points");
         }
-
+        ROS_ERROR_STREAM("99");
         bool x_going_positive = true; // Since we define the frame to be positive x along line this always starts as true
 
         std::vector<DiscreteCurve> curves;
+        ROS_ERROR_STREAM("98");
         DiscreteCurve curve;
+        ROS_ERROR_STREAM("97");
         curve.frame = compute_heading_frame(point2DToTF2Vec(basic_points[0]), point2DToTF2Vec(basic_points[1]));
+        ROS_ERROR("92");
         tf2::Transform map_in_curve = curve.frame.inverse();
-
+        ROS_ERROR_STREAM("91 basic_points size" << basic_points.size());
+        
 
 
         for (int i = 0; i < basic_points.size() - 1; i++) {
+            ROS_ERROR_STREAM("i" << i);
             tf2::Vector3 p1 = map_in_curve * point2DToTF2Vec(basic_points[i]);
             tf2::Vector3 p2 = map_in_curve * point2DToTF2Vec(basic_points[i+1]); // TODO Optimization to cache this value
             
             curve.points.push_back(tf2VecToPoint2D(p1));
+            ROS_ERROR_STREAM("i1");
 
             bool x_dir = (p2.x() - p1.x()) >= 0;
             if (x_going_positive != x_dir) {
@@ -307,15 +316,25 @@ namespace inlanecruising_plugin
                 curves.push_back(curve);
 
                 curve = DiscreteCurve();
+                ROS_ERROR_STREAM("i2");
+
                 curve.frame = compute_heading_frame(p1, p2);
+                ROS_ERROR_STREAM("i3");
+
                 map_in_curve = curve.frame.inverse();
+                ROS_ERROR_STREAM("i4");
+
                 x_going_positive = true; // Reset to true because we are using a new frame
             }
         }
+        ROS_ERROR_STREAM("90");
 
         if (!transformExactMatch(curves.back().frame, curve.frame)) {
             curves.push_back(curve);
+            ROS_ERROR_STREAM("90b");
+
         }
+        ROS_ERROR_STREAM("89");
 
         return curves;
     }
@@ -333,53 +352,53 @@ namespace inlanecruising_plugin
         std::vector<autoware_msgs::Waypoint> future_waypoints(waypoints.begin() + nearest_pt_index + 1, waypoints.end());
         std::vector<autoware_msgs::Waypoint> time_bound_waypoints = get_waypoints_in_time_boundary(future_waypoints, trajectory_time_length_);
         
-        ROS_WARN("Got boundary");
+        ROS_ERROR("Got boundary");
         std::vector<autoware_msgs::Waypoint> previous_waypoints = get_back_waypoints(waypoints, nearest_pt_index, mpc_back_waypoints_num_);
         
-        ROS_WARN("Got Previous");
+        ROS_ERROR("Got Previous");
         std::vector<autoware_msgs::Waypoint> combined_waypoints(previous_waypoints.begin(), previous_waypoints.end());
 
-        ROS_WARN("Got combined");
+        ROS_ERROR("Got combined");
         size_t new_nearest_wp_index = combined_waypoints.size() - 1;
 
-        ROS_WARN_STREAM("New Nearest index: " << new_nearest_wp_index);
+        ROS_ERROR_STREAM("New Nearest index: " << new_nearest_wp_index);
 
         combined_waypoints.insert( combined_waypoints.end(), time_bound_waypoints.begin(), time_bound_waypoints.end());
 
-        ROS_WARN("Concat completed ");
+        ROS_ERROR("Concat completed ");
 
         std::vector<lanelet::BasicPoint2d> basic_points = waypointsToBasicPoints(combined_waypoints);
 
-        ROS_WARN("Got basic points ");
+        ROS_ERROR("Got basic points ");
         std::vector<DiscreteCurve> sub_curves = compute_sub_curves(basic_points);
 
-        ROS_WARN_STREAM("Got sub_curves " << sub_curves.size());
+        ROS_ERROR_STREAM("Got sub_curves " << sub_curves.size());
 
         std::vector<tf2::Quaternion> final_yaw_values;
         std::vector<double> final_actual_speeds;
 
         for (const auto& discreet_curve : sub_curves) {
-            ROS_WARN("SubCurve");
+            ROS_INFO("SubCurve");
             tk::spline fit_curve = compute_fit(discreet_curve.points); // Returned data type TBD
-            ROS_WARN("Got fit");
+            ROS_INFO("Got fit");
             std::vector<double> sampling_points;
             sampling_points.reserve(discreet_curve.points.size());
             for (const auto& p : discreet_curve.points) {
                 sampling_points.push_back(p.x());
             }
 
-             ROS_WARN("Sampled points");
+             ROS_INFO("Sampled points");
             std::vector<double> yaw_values = compute_orientation_from_fit(fit_curve, sampling_points);
 
-             ROS_WARN("Got yaw");
+             ROS_INFO("Got yaw");
             std::vector<double> curvatures = compute_curvature_from_fit(fit_curve, sampling_points);
-             ROS_WARN("Got curvatures");
+             ROS_INFO("Got curvatures");
             std::vector<double> speed_limits(curvatures.size(), 6.7056); // TODO use lanelets to get these values
-             ROS_WARN("Got speeds limits");
+             ROS_INFO("Got speeds limits");
             std::vector<double> ideal_speeds = compute_ideal_speeds(curvatures, 1.5);
-            ROS_WARN("Got ideal limits");
+            ROS_INFO("Got ideal limits");
             std::vector<double> actual_speeds = apply_speed_limits(ideal_speeds, speed_limits);
-            ROS_WARN("Got actual");
+            ROS_INFO("Got actual");
 
             for (int i = 0; i < yaw_values.size() - 1; i++) { // Drop last point
                 double yaw = yaw_values[i];
@@ -390,14 +409,14 @@ namespace inlanecruising_plugin
                 final_yaw_values.push_back(m_to_yaw.getRotation());
             }
 
-            ROS_WARN("Converted yaw to quat");
+            ROS_INFO("Converted yaw to quat");
 
             final_actual_speeds.insert(final_actual_speeds.end(), actual_speeds.begin(), actual_speeds.end() - 1);
 
-            ROS_WARN("Appended to final");
+            ROS_INFO("Appended to final");
         }
 
-        ROS_WARN("Processed all curves");
+        ROS_ERROR("Processed all curves");
 
 
         // Apply new values to combined waypoint set
@@ -408,7 +427,7 @@ namespace inlanecruising_plugin
             i++;
         }
 
-        ROS_WARN("Created waypoints");
+        ROS_ERROR("Created waypoints");
 
         autoware_msgs::Lane lane;
         lane.lane_id = 1;
@@ -496,26 +515,34 @@ namespace inlanecruising_plugin
         double total_time = 0.0;
         for(int i = 0; i < waypoints.size(); ++i) // 
         {
+            //ROS_WARN_STREAM("size of waypoints" << waypoints.size() << ", and i:"<< i);
             sublist.push_back(waypoints[i]);
             if(i == 0)
             {
                 ROS_WARN_STREAM("21");
                 continue;
             }
-            ROS_WARN_STREAM("20");
+            //ROS_WARN_STREAM("20");
             double delta_x_square = pow(waypoints[i].pose.pose.position.x - waypoints[i - 1].pose.pose.position.x, 2);
+            //ROS_WARN_STREAM("20a");
             double delta_y_square = pow(waypoints[i].pose.pose.position.y - waypoints[i - 1].pose.pose.position.y, 2);
+            //ROS_WARN_STREAM("20b");
             //double delta_z_square = waypoints[i].pose.pose.position.z - waypoints[i - 1].pose.pose.position.z;
             // Here we ignore z attribute because it is not used by Autoware
             double delta_d = sqrt(delta_x_square + delta_y_square);
+            //ROS_WARN_STREAM("20c" << delta_d);
             double average_v = 0.5 * (waypoints[i].twist.twist.linear.x + waypoints[i - 1].twist.twist.linear.x);
+            //ROS_WARN_STREAM("20d" << average_v);
             double delta_t = delta_d / average_v;
+            //ROS_WARN_STREAM("20e" << delta_t);
             total_time += delta_t;
+            //ROS_WARN_STREAM("20f tot time:" << total_time <<", time_span" << time_span);
             if(total_time >= time_span)
             {
                 break;
             }
         }
+        ROS_WARN_STREAM("20h");                                                                                                                         
         return sublist;
     }
 
